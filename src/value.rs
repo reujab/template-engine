@@ -1,5 +1,7 @@
 use std::ops::{Add, Div, Mul, Sub};
 
+use crate::error::ValueError;
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     String(String),
@@ -29,35 +31,46 @@ impl Add<&Value> for &Value {
 }
 
 impl Sub<&Value> for &Value {
-    type Output = Value;
+    type Output = Result<Value, ValueError>;
 
     fn sub(self, rhs: &Value) -> Self::Output {
         match (self, rhs) {
-            (Value::Number(lhs), Value::Number(rhs)) => Value::Number(lhs - rhs),
-            _ => panic!("Cannot subtract {rhs:?} from {self:?}"),
+            (Value::Number(lhs), Value::Number(rhs)) => Ok(Value::Number(lhs - rhs)),
+            _ => Err(ValueError::StringOpError(format!(
+                "Cannot subtract {rhs:?} from {self:?}"
+            ))),
         }
     }
 }
 
 impl Mul<&Value> for &Value {
-    type Output = Value;
+    type Output = Result<Value, ValueError>;
 
     fn mul(self, rhs: &Value) -> Self::Output {
         match (self, rhs) {
-            (Value::Number(lhs), Value::Number(rhs)) => Value::Number(lhs * rhs),
-            (Value::String(lhs), Value::Number(rhs)) => Value::String(lhs.repeat(*rhs as usize)),
-            _ => panic!("Cannot multiple {rhs:?} with {self:?}"),
+            (Value::Number(lhs), Value::Number(rhs)) => Ok(Value::Number(lhs * rhs)),
+            (Value::String(lhs), Value::Number(rhs)) => {
+                Ok(Value::String(lhs.repeat(*rhs as usize)))
+            }
+            (Value::Number(lhs), Value::String(rhs)) => {
+                Ok(Value::String(rhs.repeat(*lhs as usize)))
+            }
+            _ => Err(ValueError::StringOpError(format!(
+                "Cannot multiply strings {self:?} with {rhs:?}"
+            ))),
         }
     }
 }
 
 impl Div<&Value> for &Value {
-    type Output = Value;
+    type Output = Result<Value, ValueError>;
 
     fn div(self, rhs: &Value) -> Self::Output {
         match (self, rhs) {
-            (Value::Number(lhs), Value::Number(rhs)) => Value::Number(lhs / rhs),
-            _ => panic!("Cannot divide {self:?} by {rhs:?}"),
+            (Value::Number(lhs), Value::Number(rhs)) => Ok(Value::Number(lhs / rhs)),
+            _ => Err(ValueError::StringOpError(format!(
+                "Cannot divide {self:?} by {rhs:?}"
+            ))),
         }
     }
 }

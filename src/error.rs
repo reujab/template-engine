@@ -30,3 +30,9 @@ pub enum ParseError {
     #[error("Unexpected token: {0:?} while parsing {1:?}")]
     UnexpectedToken(Token, &'static str),
 }
+
+#[derive(Debug, Error)]
+pub enum ValueError {
+    #[error("{0}")]
+    StringOpError(String),
+}
