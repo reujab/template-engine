@@ -1,4 +1,8 @@
-use crate::lexer::{Lexer, Operator, Token};
+use crate::{
+    error::ParseError,
+    lexer::{Lexer, Operator, Token},
+    value::Value,
+};
 
 /// The parser converts the tokens produced by the lexer into an abstract syntax tree.
 pub struct Parser<'a> {
@@ -8,11 +12,21 @@ pub struct Parser<'a> {
 
 #[derive(Debug)]
 pub enum Node {
-    Literal(f64),
+    Text(String),
+    Number(f64),
+    Variable(String),
     Operation(Box<Node>, Operator, Box<Node>),
+    List(Box<Vec<Node>>),
+    FunctionCall(String, Box<Vec<Node>>),
 }
 
 impl<'a> Parser<'a> {
+    pub fn parse_input(input: &str) -> Result<Node, ParseError> {
+        let mut lexer = Lexer::new(input);
+        let parser = Parser::new(&mut lexer);
+        parser.parse_all()
+    }
+
     pub fn new(lexer: &'a mut Lexer<'a>) -> Self {
         Self {
             lexer,
@@ -20,12 +34,112 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse(&mut self) -> Node {
-        self.parse_expr()
+    pub fn parse(&mut self) -> Result<Option<Node>, ParseError> {
+        let token = match self.next()? {
+            None => return Ok(None),
+            Some(token) => token,
+        };
+        let node = match token {
+            Token::Text(string) => Node::Text(string),
+            Token::OpenTemplate => self.parse_template()?,
+            token => panic!("Something went horribly wrong: {token:?}"),
+        };
+        Ok(Some(node))
     }
 
-    fn next(&mut self) -> Option<Token> {
-        self.buffer.pop().or_else(|| self.lexer.next())
+    pub fn parse_all(mut self) -> Result<Node, ParseError> {
+        let mut nodes = Vec::new();
+        while let Some(node) = self.parse()? {
+            nodes.push(node);
+        }
+        Ok(Node::List(nodes.into()))
+    }
+
+    fn parse_template(&mut self) -> Result<Node, ParseError> {
+        // let expression = self.parse_expr()?;
+        // self.expect(Token::CloseTemplate, "template")?;
+        // Ok(expression)
+        let node = match self.expect_next()? {
+            Token::Identifier(identifier) => match self.expect_next()? {
+                Token::OpeningParen => return self.parse_function_call(identifier),
+                // Math expression starting with variable
+                token => {
+                    self.restore(token);
+                    self.restore(Token::Identifier(identifier));
+                    let expression = self.parse_expr()?;
+                    self.expect(Token::CloseTemplate, "template identifier")?;
+                    return Ok(expression);
+                }
+            },
+            Token::Literal(literal) => match literal {
+                // Math expression starting with number.
+                Value::Number(num) => {
+                    self.restore(Token::Literal(Value::Number(num)));
+                    let expression = self.parse_expr()?;
+                    self.expect(Token::CloseTemplate, "template literal number")?;
+                    expression
+                }
+                // Strings
+                Value::String(string) => match self.expect_next()? {
+                    Token::Operator(Operator::Add) => {
+                        Node::List(vec![Node::Text(string), self.parse_template()?].into())
+                    }
+                    Token::Operator(Operator::Multiply) => Node::Operation(
+                        Node::Text(string).into(),
+                        Operator::Multiply,
+                        self.parse_template()?.into(),
+                    ),
+                    Token::CloseTemplate => Node::Text(string),
+                    token => {
+                        return Err(ParseError::UnexpectedToken(
+                            token,
+                            "template literal string",
+                        ))
+                    }
+                },
+            },
+            Token::OpeningParen => {
+                self.restore(Token::OpeningParen);
+                let expression = self.parse_expr()?;
+                self.expect(Token::CloseTemplate, "template parentheses")?;
+                expression
+            }
+            token => return Err(ParseError::UnexpectedToken(token, "template")),
+        };
+        Ok(node)
+    }
+
+    fn parse_function_call(&mut self, identifier: String) -> Result<Node, ParseError> {
+        let mut args = Vec::new();
+        loop {
+            match self.expect_next()? {
+                Token::ClosingParen => break,
+                Token::Literal(Value::String(string)) => {
+                    args.push(Node::Text(string));
+                }
+                token => {
+                    self.restore(token);
+                    args.push(self.parse_expr()?);
+                }
+            }
+            match self.expect_next()? {
+                Token::ClosingParen => break,
+                Token::Comma => continue,
+                token => return Err(ParseError::UnexpectedToken(token, "function call")),
+            }
+        }
+        self.expect(Token::CloseTemplate, "function call")?;
+        Ok(Node::FunctionCall(identifier, args.into()))
+    }
+
+    fn next(&mut self) -> Result<Option<Token>, ParseError> {
+        if self.buffer.is_empty() {
+            self.lexer
+                .next_token()
+                .map_err(|err| ParseError::LexerError(err))
+        } else {
+            Ok(self.buffer.pop())
+        }
     }
 
     /// Call this function when you get a token you don't need.
@@ -34,54 +148,36 @@ impl<'a> Parser<'a> {
         self.buffer.push(token);
     }
 
-    /// This is our first parse function. It handles the lowest-precedence operations (plus and minus).
-    /// This could be rewritten with precedence climbing, but I prefer clear code over concise code.
-    fn parse_expr(&mut self) -> Node {
-        // (1) When we are parsing an expression, we want to get the first "thing" whether that's
-        // a literal number or an operation inside parentheses.
-        let mut expression = self.parse_term();
-        // (5) So now we have our `term`, 3, and the next token is a plus operator.
-        loop {
-            let token = match self.next() {
-                None => break,
-                Some(token) => token,
-            };
+    /// This functions handles the lowest-precedence operations (plus and minus).
+    fn parse_expr(&mut self) -> Result<Node, ParseError> {
+        let mut expression = self.parse_term()?;
+        while let Some(token) = self.next()? {
             match token {
                 Token::Operator(operator) => match operator {
-                    // (6) We found the plus operator, now we need to parse the right-hand side.
-                    // We know the right-hand side is a term, so we call `parse_term`.
                     Operator::Add | Operator::Subtract => {
-                        let term = self.parse_term();
+                        let term = self.parse_term()?;
                         expression = Node::Operation(expression.into(), operator, term.into());
                         continue;
                     }
-                    _ => self.restore(token),
+                    // Remember, at this point, we've consumed any other operators. (At least for
+                    // this term.)
+                    _ => panic!("Something went horribly wrong."),
                 },
                 _ => self.restore(token),
             }
             break;
         }
-        expression
+        Ok(expression)
     }
 
     /// This functions parses a term and handles the higher-precedence operations (multiply and divide).
-    fn parse_term(&mut self) -> Node {
-        // (2) One more recursion. We'll come back to this later.
-        let mut term = self.parse_factor();
-        // (4) Now we started building our term (in this case, 3). The next token is an addition
-        // operator, so this term is finished. Return 3.
-        // (7) So we already parsed `3 +`, and just now we parsed the `8`. Now, our remaining tokens
-        // are `[Op(Divide), Literal(2)]`, and this time, we have division.
-        loop {
-            let token = match self.next() {
-                None => break,
-                Some(token) => token,
-            };
+    fn parse_term(&mut self) -> Result<Node, ParseError> {
+        let mut term = self.parse_factor()?;
+        while let Some(token) = self.next()? {
             match token {
                 Token::Operator(operator) => match operator {
-                    // (8) Here, we add the next factor (2).
                     Operator::Multiply | Operator::Divide => {
-                        let factor = self.parse_factor();
+                        let factor = self.parse_factor()?;
                         term = Node::Operation(term.into(), operator, factor.into());
                         continue;
                     }
@@ -91,32 +187,36 @@ impl<'a> Parser<'a> {
             }
             break;
         }
-        term
+        Ok(term)
     }
 
     /// This function parses parentheses and literals.
-    fn parse_factor(&mut self) -> Node {
-        // (3) Here, we're getting that "thing" from earlier. For this example, let's say we're
-        // parsing `3 + 8 / 2`. This function will get the first token (3) and return it.
-        let token = self.expect_next();
-        match token {
-            Token::Number(num) => Node::Literal(num),
+    fn parse_factor(&mut self) -> Result<Node, ParseError> {
+        let token = self.expect_next()?;
+        let factor = match token {
+            Token::Identifier(identifier) => Node::Variable(identifier),
+            Token::Literal(Value::Number(num)) => Node::Number(num),
+            Token::Literal(Value::String(string)) => Node::Text(string),
             Token::OpeningParen => {
-                let expr = self.parse_expr();
-                self.expect(Token::ClosingParen);
+                let expr = self.parse_expr()?;
+                self.expect(Token::ClosingParen, "factor parentheses")?;
                 expr
             }
-            token => panic!("unexpected token {token:?}"),
-        }
+            token => return Err(ParseError::UnexpectedToken(token, "factor")),
+        };
+        Ok(factor)
     }
 
-    fn expect_next(&mut self) -> Token {
-        self.next().ok_or("unexpected EOF").unwrap()
+    fn expect_next(&mut self) -> Result<Token, ParseError> {
+        self.next()?.ok_or(ParseError::UnexpectedEOF)
     }
 
-    fn expect(&mut self, token: Token) {
-        if token != self.expect_next() {
-            panic!("expected {token:?}");
+    fn expect(&mut self, expected_token: Token, parsing: &'static str) -> Result<(), ParseError> {
+        let next_token = self.expect_next()?;
+        if expected_token == next_token {
+            Ok(())
+        } else {
+            Err(ParseError::UnexpectedToken(next_token, parsing))
         }
     }
 }

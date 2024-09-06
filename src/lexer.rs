@@ -1,3 +1,5 @@
+use crate::{error::LexerError, value::Value};
+
 /// The lexer (a.k.a tokenizer) is responsible for converting the input into a one-dimensional
 /// series of tokens. For example, the input `3 + (4/2)` into the lexer would yield:
 /// `[Literal(3], Op(Add), OpenParen, Literal(4), Op(Divide) Literal(2), ClosingParen]`
@@ -10,14 +12,22 @@ pub struct Lexer<'a> {
     src: &'a str,
     token_start_byte: usize,
     cursor: usize,
+    is_inside_template: bool,
 }
 
 #[derive(Debug, PartialEq)]
 pub enum Token {
-    Number(f64),
-    Operator(Operator),
+    Text(String),
+
+    OpenTemplate,
+    CloseTemplate,
     OpeningParen,
     ClosingParen,
+    Comma,
+
+    Identifier(String),
+    Literal(Value),
+    Operator(Operator),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -34,31 +44,56 @@ impl<'a> Lexer<'a> {
             src,
             token_start_byte: 0,
             cursor: 0,
+            is_inside_template: false,
         }
     }
 
-    pub fn next(&mut self) -> Option<Token> {
+    pub fn next_token(&mut self) -> Result<Option<Token>, LexerError> {
         let next_char = match self.get_next_char() {
-            None => return None,
+            None => return Ok(None),
             Some(next_char) => next_char,
         };
 
         let token = match next_char {
-            '(' => Token::OpeningParen,
-            ')' => Token::ClosingParen,
-            '+' => Token::Operator(Operator::Add),
-            '-' => Token::Operator(Operator::Subtract),
-            '*' => Token::Operator(Operator::Multiply),
-            '/' => Token::Operator(Operator::Divide),
-            '0'..='9' | '.' => self.yield_number(),
-            c if c.is_whitespace() => {
-                self.consume_whitespace();
-                return self.next();
+            '{' if !self.is_inside_template => {
+                if self.get_if_is('{').is_none() {
+                    // False alarm; return next string.
+                    return self.next_token();
+                }
+                self.is_inside_template = true;
+                Token::OpenTemplate
             }
-            c => panic!("Unknown character: {c:?}"),
+            '}' if self.is_inside_template => {
+                if self.get_if_is('}').is_none() {
+                    // Single closing curly braces are not allowed inside templates.
+                    return Err(LexerError::UnrecognizedCharacter('}'));
+                }
+                self.is_inside_template = false;
+                Token::CloseTemplate
+            }
+            'a'..='z' | 'A'..='Z' | '_' if self.is_inside_template => self.yield_identifier(),
+            '"' | '\'' => self.yield_string(next_char)?,
+            '(' if self.is_inside_template => Token::OpeningParen,
+            ')' if self.is_inside_template => Token::ClosingParen,
+            '+' if self.is_inside_template => Token::Operator(Operator::Add),
+            '-' if self.is_inside_template => Token::Operator(Operator::Subtract),
+            '*' if self.is_inside_template => Token::Operator(Operator::Multiply),
+            '/' if self.is_inside_template => Token::Operator(Operator::Divide),
+            '0'..='9' | '.' if self.is_inside_template => self.yield_number()?,
+            ',' if self.is_inside_template => Token::Comma,
+            c if self.is_inside_template && c.is_whitespace() => {
+                self.consume_whitespace();
+                return self.next_token();
+            }
+            c if self.is_inside_template => return Err(LexerError::UnrecognizedCharacter(c)),
+            _ => {
+                self.advance_while(|c| c != '{');
+                Token::Text(self.get_slice().to_owned())
+            }
         };
         self.end_token();
-        Some(token)
+        self.token_start_byte = self.cursor;
+        Ok(Some(token))
     }
 
     fn get_next_char(&mut self) -> Option<char> {
@@ -69,14 +104,71 @@ impl<'a> Lexer<'a> {
         next_char
     }
 
+    fn expect_next_char(&mut self) -> Result<char, LexerError> {
+        match self.get_next_char() {
+            Some(c) => Ok(c),
+            None => Err(LexerError::UnexpectedEOF),
+        }
+    }
+
+    fn get_if_is(&mut self, c: char) -> Option<char> {
+        let next_char = self.peek();
+        if let Some(next_char) = next_char {
+            if next_char != c {
+                return None;
+            }
+            self.cursor += next_char.len_utf8();
+        }
+        next_char
+    }
+
     fn peek(&self) -> Option<char> {
         self.src[self.cursor..].chars().next()
     }
 
-    fn yield_number(&mut self) -> Token {
+    fn yield_identifier(&mut self) -> Token {
+        self.advance_while(|c| c == '_' || c.is_alphanumeric());
+        Token::Identifier(self.get_slice().to_owned())
+    }
+
+    fn yield_number(&mut self) -> Result<Token, LexerError> {
         self.advance_while(|c| c == '.' || c.is_ascii_digit());
-        let number = self.get_slice();
-        Token::Number(number.parse().unwrap())
+        let slice = self.get_slice();
+        let number = match slice.parse() {
+            Err(err) => return Err(LexerError::NumberParseError(err)),
+            Ok(number) => number,
+        };
+        Ok(Token::Literal(Value::Number(number)))
+    }
+
+    fn yield_string(&mut self, quote: char) -> Result<Token, LexerError> {
+        let mut string = String::new();
+        self.end_token();
+        loop {
+            match self.expect_next_char()? {
+                '\\' => {
+                    let next = self.expect_next_char()?;
+                    let c = match next {
+                        'n' => "\n",
+                        '\\' => "\\",
+                        _ if next == quote => &quote.to_string(),
+                        _ => return Err(LexerError::UnrecognizedEscape(next)),
+                    };
+                    self.cursor -= 2;
+                    string += self.get_slice();
+                    string += c;
+                    self.cursor += 2;
+                    self.end_token();
+                }
+                c if c == quote => {
+                    self.cursor -= 1;
+                    string += self.get_slice();
+                    self.cursor += 1;
+                    return Ok(Token::Literal(Value::String(string)));
+                }
+                _ => {}
+            }
+        }
     }
 
     fn advance_while<F: Fn(char) -> bool>(&mut self, func: F) {
@@ -105,7 +197,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn consume_whitespace(&mut self) {
-        self.advance_while(|c| c.is_whitespace());
+        self.advance_while(char::is_whitespace);
         self.end_token();
     }
 }

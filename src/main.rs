@@ -1,17 +1,19 @@
-use lexer::Lexer;
-use parser::Parser;
+use std::collections::HashMap;
 
+use parser::Parser;
+use value::Value;
+
+mod error;
 mod evaluate;
 mod lexer;
 mod parser;
+mod value;
 
 fn main() {
-    let input = "1 + 8 / 2 - 3 * 2 * (5 - 3)"; // -7
-    let mut lexer = Lexer::new(input);
-    let mut parser = Parser::new(&mut lexer);
-    let node = parser.parse();
-    let result = node.evaluate();
-    println!("{node:?}\n{result}");
-    // If we were parsing a scripting language, we would keep parsing nodes. Since we're just
-    // evaluating an expression, we only need one node.
+    let node = Parser::parse_input("{{'test'*a/b}}").unwrap();
+    println!("{node:?}");
+    let mut variables = HashMap::new();
+    variables.insert("a".to_owned(), Value::Number(8.0));
+    variables.insert("b".to_owned(), Value::Number(2.0));
+    println!("{:?}", node.evaluate(&variables));
 }
