@@ -171,7 +171,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn advance_while<F: Fn(char) -> bool>(&mut self, func: F) {
+    fn advance_while(&mut self, func: fn(char) -> bool) {
         while let Some(c) = self.get_next_char() {
             if !func(c) {
                 self.backup();

@@ -104,7 +104,6 @@ impl<'a> Parser<'a> {
     fn parse_factor(&mut self) -> Result<Node, ParseError> {
         let token = self.expect_next()?;
         let factor = match token {
-            // Token::Identifier(identifier) => Node::Variable(identifier),
             Token::Identifier(identifier) => match self.expect_next()? {
                 Token::OpeningParen => self.parse_function_call(identifier)?,
                 t => {
