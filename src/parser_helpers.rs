@@ -4,7 +4,7 @@ impl<'a> Parser<'a> {
     pub(crate) fn next_token(&mut self) -> Result<Option<Token>, ParseError> {
         if self.buffer.is_empty() {
             self.lexer
-                .next_token()
+                .yield_token()
                 .map_err(|err| ParseError::LexerError(err))
         } else {
             Ok(self.buffer.pop())

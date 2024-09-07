@@ -3,7 +3,7 @@ use crate::{error::LexerError, value::Value};
 /// The lexer (a.k.a tokenizer) is responsible for converting the input into a one-dimensional
 /// series of tokens. For example, the input `3 + (4/2)` into the lexer would yield:
 /// `[Literal(3], Op(Add), OpenParen, Literal(4), Op(Divide) Literal(2), ClosingParen]`
-/// This implementation is zero-allocation.
+/// This implementation uses minimal allocation.
 pub struct Lexer<'a> {
     /// There are many different ways of representing the input: String, &str, Vec<char>, Chars,
     /// etc. A string slice works best here because we don't have to keep converting between
@@ -38,7 +38,7 @@ pub enum Keyword {
     Else,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum Operator {
     Add,
     Subtract,
@@ -56,7 +56,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn next_token(&mut self) -> Result<Option<Token>, LexerError> {
+    pub fn yield_token(&mut self) -> Result<Option<Token>, LexerError> {
         let next_char = match self.get_next_char() {
             None => return Ok(None),
             Some(next_char) => next_char,
@@ -66,7 +66,7 @@ impl<'a> Lexer<'a> {
             '{' if !self.is_inside_template => {
                 if self.get_if_is('{').is_none() {
                     // False alarm; return next string.
-                    return self.next_token();
+                    return self.yield_token();
                 }
                 self.is_inside_template = true;
                 Token::OpenTemplate
@@ -91,10 +91,12 @@ impl<'a> Lexer<'a> {
             ',' if self.is_inside_template => Token::Comma,
             c if self.is_inside_template && c.is_whitespace() => {
                 self.consume_whitespace();
-                return self.next_token();
+                return self.yield_token();
             }
             c if self.is_inside_template => return Err(LexerError::UnrecognizedCharacter(c)),
             _ => {
+                // Note: This will cause any single curly brace to start its own text node. This
+                // currently has no side effects.
                 self.advance_while(|c| c != '{');
                 Token::Text(self.get_slice().to_owned())
             }

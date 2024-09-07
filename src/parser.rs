@@ -132,7 +132,7 @@ impl<'a> Parser<'a> {
                         expression = Node::Operation(expression.into(), operator, term.into());
                         continue;
                     }
-                    _ => self.restore(token),
+                    _ => self.restore(Token::Operator(operator)),
                 },
                 _ => self.restore(token),
             }
@@ -152,7 +152,7 @@ impl<'a> Parser<'a> {
                         term = Node::Operation(term.into(), operator, factor.into());
                         continue;
                     }
-                    _ => self.restore(token),
+                    _ => self.restore(Token::Operator(operator)),
                 },
                 _ => self.restore(token),
             }

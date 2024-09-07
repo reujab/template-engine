@@ -34,7 +34,7 @@ pub enum ParseError {
 #[derive(Debug, Error)]
 pub enum ValueError {
     #[error("{0}")]
-    StringOpError(String),
+    OperationError(String),
 
     #[error("Undefined variable: {0:?}")]
     UndefinedVariable(String),

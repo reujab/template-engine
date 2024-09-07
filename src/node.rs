@@ -45,20 +45,20 @@ impl Node {
                 let lhs = lhs.evaluate(variables, functions)?;
                 let rhs = rhs.evaluate(variables, functions)?;
                 match op {
-                    Operator::Add => Ok(&lhs + &rhs),
+                    Operator::Add => &lhs + &rhs,
                     Operator::Subtract => &lhs - &rhs,
                     Operator::Multiply => &lhs * &rhs,
                     Operator::Divide => &lhs / &rhs,
                 }
             }
             Node::IfThenElse(condition, then_node, else_node) => {
-                let condition = condition.evaluate(variables, functions)?.is_truthy();
-                if condition {
+                let evaluation = condition.evaluate(variables, functions)?;
+                if evaluation.is_truthy() {
                     then_node.evaluate(variables, functions)
                 } else if let Some(else_node) = else_node {
                     else_node.evaluate(variables, functions)
                 } else {
-                    Ok(Value::Number(0.0))
+                    Ok(Value::String(String::new()))
                 }
             }
         }

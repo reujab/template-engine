@@ -12,7 +12,7 @@ use value::Value;
 
 fn main() {
     let node = Parser::parse_input(
-        "{{if a}}{{if c}}a and b{{/if}} or just a{{elif b}}b{{else}}!a and !b{{/if}}",
+        "{{if a}}{{if b}}a and b{{/if}} or just a{{elif b}}b{{else}}!a and !b{{/if}}",
     )
     .unwrap();
     println!("{node:#?}");
