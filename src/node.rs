@@ -9,6 +9,7 @@ pub enum Node {
     Variable(String),
     FunctionCall(String, Vec<Node>),
     Operation(Box<Node>, Operator, Box<Node>),
+    Not(Box<Node>),
     IfThenElse(Box<Node>, Box<Node>, Option<Box<Node>>),
 }
 
@@ -19,6 +20,13 @@ impl Node {
         functions: &HashMap<String, impl Fn(Vec<Value>) -> Value>,
     ) -> Result<Value, ValueError> {
         match self {
+            Node::Root(nodes) => {
+                let mut buffer = String::new();
+                for node in &**nodes {
+                    buffer += &node.evaluate(variables, functions)?.to_string();
+                }
+                Ok(Value::String(buffer))
+            }
             Node::Value(value) => Ok(value.clone()),
             Node::Variable(identifier) => {
                 let variable = *variables
@@ -36,13 +44,6 @@ impl Node {
                     .collect::<Result<Vec<Value>, ValueError>>()?;
                 Ok((*function)(args))
             }
-            Node::Root(nodes) => {
-                let mut buffer = String::new();
-                for node in &**nodes {
-                    buffer += &node.evaluate(variables, functions)?.to_string();
-                }
-                Ok(Value::String(buffer))
-            }
             Node::Operation(lhs, op, rhs) => {
                 let lhs = lhs.evaluate(variables, functions)?;
                 let rhs = rhs.evaluate(variables, functions)?;
@@ -57,6 +58,9 @@ impl Node {
                     Operator::Or => Ok(Value::Boolean(lhs.is_truthy() || rhs.is_truthy())),
                 }
             }
+            Node::Not(node) => Ok(Value::Boolean(
+                !node.evaluate(variables, functions)?.is_truthy(),
+            )),
             Node::IfThenElse(condition, then_node, else_node) => {
                 let evaluation = condition.evaluate(variables, functions)?;
                 if evaluation.is_truthy() {
@@ -96,6 +100,9 @@ impl Node {
             }
             Node::Variable(identifier) => {
                 references.insert(identifier);
+            }
+            Node::Not(node) => {
+                references.extend(node.referenced_vars());
             }
             Node::Value(_) => {}
         }

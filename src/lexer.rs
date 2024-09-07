@@ -24,6 +24,7 @@ pub enum Token {
     OpeningParen,
     ClosingParen,
     Comma,
+    Exclamation,
 
     Keyword(Keyword),
     Identifier(String),
@@ -94,10 +95,13 @@ impl<'a> Lexer<'a> {
                 self.expect_char('=')?;
                 Token::Operator(Operator::IsEqualTo)
             }
-            '!' if self.is_inside_template => {
-                self.expect_char('=')?;
-                Token::Operator(Operator::IsNotEqualTo)
-            }
+            '!' if self.is_inside_template => match self.expect_next_char()? {
+                '=' => Token::Operator(Operator::IsNotEqualTo),
+                _ => {
+                    self.backup();
+                    Token::Exclamation
+                }
+            },
             '&' if self.is_inside_template => {
                 self.expect_char('&')?;
                 Token::Operator(Operator::And)

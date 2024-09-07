@@ -220,6 +220,12 @@ impl<'a> Parser<'a> {
     fn parse_factor(&mut self) -> Result<Node, ParseError> {
         let token = self.expect_next_token()?;
         let factor = match token {
+            Token::Literal(value) => Node::Value(value),
+            Token::OpeningParen => {
+                let expr = self.parse_expr()?;
+                self.expect(Token::ClosingParen, "parentheses")?;
+                expr
+            }
             Token::Identifier(identifier) => match self.expect_next_token()? {
                 Token::OpeningParen => self.parse_function_call(identifier)?,
                 next_token => {
@@ -227,12 +233,7 @@ impl<'a> Parser<'a> {
                     Node::Variable(identifier)
                 }
             },
-            Token::Literal(value) => Node::Value(value),
-            Token::OpeningParen => {
-                let expr = self.parse_expr()?;
-                self.expect(Token::ClosingParen, "parentheses")?;
-                expr
-            }
+            Token::Exclamation => Node::Not(self.parse_factor()?.into()),
             token => return Err(ParseError::UnexpectedToken(token, "factor")),
         };
         Ok(factor)
