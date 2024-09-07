@@ -4,10 +4,10 @@ use crate::{error::ValueError, lexer::Operator, value::Value};
 
 #[derive(Debug)]
 pub enum Node {
-    Root(Box<Vec<Node>>),
+    Root(Vec<Node>),
     Value(Value),
     Variable(String),
-    FunctionCall(String, Box<Vec<Node>>),
+    FunctionCall(String, Vec<Node>),
     Operation(Box<Node>, Operator, Box<Node>),
     IfThenElse(Box<Node>, Box<Node>, Option<Box<Node>>),
 }
@@ -27,7 +27,9 @@ impl Node {
                 Ok(variable.clone())
             }
             Node::FunctionCall(identifier, args) => {
-                let function = &functions[identifier];
+                let function = functions
+                    .get(identifier)
+                    .ok_or_else(|| ValueError::UndefinedVariable(identifier.clone()))?;
                 let args = args
                     .iter()
                     .map(|node| node.evaluate(variables, functions))

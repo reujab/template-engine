@@ -30,7 +30,7 @@ impl<'a> Parser<'a> {
         while let Some(node) = self.next_node()? {
             nodes.push(node);
         }
-        Ok(Node::Root(nodes.into()))
+        Ok(Node::Root(nodes))
     }
 
     pub fn next_node(&mut self) -> Result<Option<Node>, ParseError> {
@@ -118,7 +118,7 @@ impl<'a> Parser<'a> {
                 Err(err) => return Err(err),
             }
         }
-        Ok(Node::Root(nodes.into()))
+        Ok(Node::Root(nodes))
     }
 
     /// This functions handles the lowest-precedence number operations (plus and minus).
@@ -199,6 +199,6 @@ impl<'a> Parser<'a> {
                 token => return Err(ParseError::UnexpectedToken(token, "function call")),
             }
         }
-        Ok(Node::FunctionCall(identifier, args.into()))
+        Ok(Node::FunctionCall(identifier, args))
     }
 }
