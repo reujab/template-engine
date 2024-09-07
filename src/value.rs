@@ -34,11 +34,9 @@ impl Add<&Value> for &Value {
             (Value::Number(lhs), Value::String(rhs)) => Ok(Value::String(format!("{lhs}{rhs}"))),
             (Value::String(lhs), Value::Number(rhs)) => Ok(Value::String(format!("{lhs}{rhs}"))),
             (Value::String(lhs), Value::String(rhs)) => Ok(Value::String(format!("{lhs}{rhs}"))),
-            _ => {
-                return Err(ValueError::OperationError(format!(
-                    "Cannot add {rhs:?} to {self:?}"
-                )))
-            }
+            _ => Err(ValueError::OperationError(format!(
+                "Cannot add {rhs:?} to {self:?}"
+            ))),
         }
     }
 }

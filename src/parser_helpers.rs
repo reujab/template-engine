@@ -2,12 +2,9 @@ use crate::{error::ParseError, lexer::Token, parser::Parser};
 
 impl<'a> Parser<'a> {
     pub(crate) fn next_token(&mut self) -> Result<Option<Token>, ParseError> {
-        if self.buffer.is_empty() {
-            self.lexer
-                .yield_token()
-                .map_err(|err| ParseError::LexerError(err))
-        } else {
-            Ok(self.buffer.pop())
+        match &mut self.buffer {
+            None => self.lexer.yield_token().map_err(ParseError::LexerError),
+            buffer => Ok(buffer.take()),
         }
     }
 
@@ -28,9 +25,10 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Call this function when you get a token you don't need.
-    /// Call in reverse order: a = self.next(); b = self.next(); self.restore(b); self.restore(a);
+    /// Call this function when you get a token you don't need. Panics if you restore multiple
+    /// tokens in a row.
     pub(crate) fn restore(&mut self, token: Token) {
-        self.buffer.push(token);
+        assert_eq!(self.buffer, None);
+        self.buffer = Some(token);
     }
 }

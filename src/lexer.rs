@@ -21,8 +21,13 @@ pub enum Token {
 
     OpenTemplate,
     CloseTemplate,
+
     OpeningParen,
     ClosingParen,
+
+    OpeningSquareBracket,
+    ClosingSquareBracket,
+
     Comma,
     Exclamation,
 
@@ -37,6 +42,9 @@ pub enum Keyword {
     If,
     Elif,
     Else,
+
+    For,
+    In,
 }
 
 #[derive(Debug, PartialEq)]
@@ -86,6 +94,8 @@ impl<'a> Lexer<'a> {
             '"' | '\'' => self.yield_string(next_char)?,
             '(' if self.is_inside_template => Token::OpeningParen,
             ')' if self.is_inside_template => Token::ClosingParen,
+            '[' if self.is_inside_template => Token::OpeningSquareBracket,
+            ']' if self.is_inside_template => Token::ClosingSquareBracket,
             '*' if self.is_inside_template => Token::Operator(Operator::Multiply),
             '/' if self.is_inside_template => Token::Operator(Operator::Divide),
             '+' if self.is_inside_template => Token::Operator(Operator::Add),
@@ -172,6 +182,8 @@ impl<'a> Lexer<'a> {
             "if" => Token::Keyword(Keyword::If),
             "elif" => Token::Keyword(Keyword::Elif),
             "else" => Token::Keyword(Keyword::Else),
+            "for" => Token::Keyword(Keyword::For),
+            "in" => Token::Keyword(Keyword::In),
             _ => Token::Identifier(identifier.to_owned()),
         }
     }

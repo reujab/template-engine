@@ -8,7 +8,7 @@ use crate::{
 /// The parser converts the tokens produced by the lexer into an abstract syntax tree.
 pub struct Parser<'a> {
     pub(crate) lexer: &'a mut Lexer<'a>,
-    pub(crate) buffer: Vec<Token>,
+    pub(crate) buffer: Option<Token>,
 }
 
 impl<'a> Parser<'a> {
@@ -21,7 +21,7 @@ impl<'a> Parser<'a> {
     pub fn new(lexer: &'a mut Lexer<'a>) -> Self {
         Self {
             lexer,
-            buffer: Vec::with_capacity(1),
+            buffer: None,
         }
     }
 
@@ -30,7 +30,7 @@ impl<'a> Parser<'a> {
         while let Some(node) = self.next_node()? {
             nodes.push(node);
         }
-        Ok(Node::Root(nodes))
+        Ok(Node::Body(nodes))
     }
 
     pub fn next_node(&mut self) -> Result<Option<Node>, ParseError> {
@@ -49,18 +49,13 @@ impl<'a> Parser<'a> {
     fn parse_template(&mut self) -> Result<Node, ParseError> {
         let node = match self.expect_next_token()? {
             Token::Keyword(Keyword::If) => self.parse_if()?,
-            // These next two cases are returning early for expected "unexpected" tokens (parse_if).
+            Token::Keyword(Keyword::For) => self.parse_for()?,
+            // These next two cases are returning early for expected "unexpected" tokens.
             Token::Keyword(keyword) => {
-                return Err(ParseError::UnexpectedToken(
-                    Token::Keyword(keyword),
-                    "template",
-                ));
+                return Err(ParseError::ExpectedToken(Token::Keyword(keyword)));
             }
             Token::Operator(Operator::Divide) => {
-                return Err(ParseError::UnexpectedToken(
-                    Token::Operator(Operator::Divide),
-                    "template",
-                ));
+                return Err(ParseError::ExpectedToken(Token::Operator(Operator::Divide)));
             }
             token => {
                 self.restore(token);
@@ -78,24 +73,24 @@ impl<'a> Parser<'a> {
         let else_node = loop {
             match self.next_node() {
                 Ok(node) => then_nodes.push(node.ok_or(ParseError::UnexpectedEOF)?),
-                Err(ParseError::UnexpectedToken(Token::Keyword(Keyword::Elif), _)) => {
+                Err(ParseError::ExpectedToken(Token::Keyword(Keyword::Elif))) => {
                     // This is so beautiful. We just consumed the elif keyword, so this single call
                     // will parse the rest of this "if" tree up to the {{/if tokens, leaving the
                     // closing template token to be consumed by `parse_template`. Beautiful
                     // recursion.
                     break Some(self.parse_if()?);
                 }
-                Err(ParseError::UnexpectedToken(Token::Keyword(Keyword::Else), _)) => {
+                Err(ParseError::ExpectedToken(Token::Keyword(Keyword::Else))) => {
                     break Some(self.parse_else()?);
                 }
-                Err(ParseError::UnexpectedToken(Token::Operator(Operator::Divide), _)) => {
+                Err(ParseError::ExpectedToken(Token::Operator(Operator::Divide))) => {
                     self.expect(Token::Keyword(Keyword::If), "end if")?;
                     break None;
                 }
                 Err(err) => return Err(err),
             }
         };
-        let then_node = Node::Root(then_nodes.into());
+        let then_node = Node::Body(then_nodes);
         Ok(Node::IfThenElse(
             condition.into(),
             then_node.into(),
@@ -118,143 +113,30 @@ impl<'a> Parser<'a> {
                 Err(err) => return Err(err),
             }
         }
-        Ok(Node::Root(nodes))
+        Ok(Node::Body(nodes))
     }
 
-    fn parse_expr(&mut self) -> Result<Node, ParseError> {
-        self.parse_or()
-    }
-
-    fn parse_or(&mut self) -> Result<Node, ParseError> {
-        let mut expression = self.parse_and()?;
-        while let Some(token) = self.next_token()? {
-            match token {
-                Token::Operator(Operator::Or) => {
-                    let rhs = self.parse_and()?;
-                    expression = Node::Operation(expression.into(), Operator::Or, rhs.into());
-                    continue;
-                }
-                _ => self.restore(token),
-            }
-            break;
-        }
-        Ok(expression)
-    }
-
-    fn parse_and(&mut self) -> Result<Node, ParseError> {
-        let mut expression = self.parse_comparisons()?;
-        while let Some(token) = self.next_token()? {
-            match token {
-                Token::Operator(Operator::And) => {
-                    let rhs = self.parse_comparisons()?;
-                    expression = Node::Operation(expression.into(), Operator::And, rhs.into());
-                    continue;
-                }
-                _ => self.restore(token),
-            }
-            break;
-        }
-        Ok(expression)
-    }
-
-    fn parse_comparisons(&mut self) -> Result<Node, ParseError> {
-        let mut expression = self.parse_polynomial()?;
-        while let Some(token) = self.next_token()? {
-            match token {
-                Token::Operator(operator) => match operator {
-                    Operator::IsEqualTo | Operator::IsNotEqualTo => {
-                        let rhs = self.parse_polynomial()?;
-                        expression = Node::Operation(expression.into(), operator, rhs.into());
-                        continue;
-                    }
-                    _ => self.restore(Token::Operator(operator)),
-                },
-                _ => self.restore(token),
-            }
-            break;
-        }
-        Ok(expression)
-    }
-
-    /// This functions handles the lowest-precedence number operations (plus and minus).
-    fn parse_polynomial(&mut self) -> Result<Node, ParseError> {
-        let mut expression = self.parse_term()?;
-        while let Some(token) = self.next_token()? {
-            match token {
-                Token::Operator(operator) => match operator {
-                    Operator::Add | Operator::Subtract => {
-                        let term = self.parse_term()?;
-                        expression = Node::Operation(expression.into(), operator, term.into());
-                        continue;
-                    }
-                    _ => self.restore(Token::Operator(operator)),
-                },
-                _ => self.restore(token),
-            }
-            break;
-        }
-        Ok(expression)
-    }
-
-    /// This functions parses a term and handles the higher-precedence operations (multiply and divide).
-    fn parse_term(&mut self) -> Result<Node, ParseError> {
-        let mut term = self.parse_factor()?;
-        while let Some(token) = self.next_token()? {
-            match token {
-                Token::Operator(operator) => match operator {
-                    Operator::Multiply | Operator::Divide => {
-                        let factor = self.parse_factor()?;
-                        term = Node::Operation(term.into(), operator, factor.into());
-                        continue;
-                    }
-                    _ => self.restore(Token::Operator(operator)),
-                },
-                _ => self.restore(token),
-            }
-            break;
-        }
-        Ok(term)
-    }
-
-    /// This function parses parentheses and literals.
-    fn parse_factor(&mut self) -> Result<Node, ParseError> {
-        let token = self.expect_next_token()?;
-        let factor = match token {
-            Token::Literal(value) => Node::Value(value),
-            Token::OpeningParen => {
-                let expr = self.parse_expr()?;
-                self.expect(Token::ClosingParen, "parentheses")?;
-                expr
-            }
-            Token::Identifier(identifier) => match self.expect_next_token()? {
-                Token::OpeningParen => self.parse_function_call(identifier)?,
-                next_token => {
-                    self.restore(next_token);
-                    Node::Variable(identifier)
-                }
-            },
-            Token::Exclamation => Node::Not(self.parse_factor()?.into()),
-            token => return Err(ParseError::UnexpectedToken(token, "factor")),
+    fn parse_for(&mut self) -> Result<Node, ParseError> {
+        let identifier = match self.expect_next_token()? {
+            Token::Identifier(identifier) => identifier,
+            token => return Err(ParseError::UnexpectedToken(token, "for identifier")),
         };
-        Ok(factor)
-    }
+        self.expect(Token::Keyword(Keyword::In), "for in")?;
+        let array = self.parse_expr()?;
+        self.expect(Token::CloseTemplate, "for array")?;
 
-    fn parse_function_call(&mut self, identifier: String) -> Result<Node, ParseError> {
-        let mut args = Vec::new();
+        let mut body = Vec::new();
         loop {
-            match self.expect_next_token()? {
-                Token::ClosingParen => break,
-                token => {
-                    self.restore(token);
-                    args.push(self.parse_expr()?);
+            match self.next_node() {
+                Ok(node) => body.push(node.ok_or(ParseError::UnexpectedEOF)?),
+                Err(ParseError::ExpectedToken(Token::Operator(Operator::Divide))) => {
+                    self.expect(Token::Keyword(Keyword::For), "for")?;
+                    break;
                 }
-            }
-            match self.expect_next_token()? {
-                Token::ClosingParen => break,
-                Token::Comma => continue,
-                token => return Err(ParseError::UnexpectedToken(token, "function call")),
+                Err(err) => return Err(err),
             }
         }
-        Ok(Node::FunctionCall(identifier, args))
+        let body_node = Node::Body(body);
+        Ok(Node::ForIn(identifier, array.into(), body_node.into()))
     }
 }

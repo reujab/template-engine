@@ -1,5 +1,6 @@
 mod error;
 mod lexer;
+mod math;
 mod node;
 mod parser;
 mod parser_helpers;
@@ -11,22 +12,31 @@ use parser::Parser;
 use value::Value;
 
 fn main() {
-    let node = Parser::parse_input(
-        "{{if a != b}}{{if b}}a an{{b}}d b{{/if}} or just a{{elif b}}b{{else}}!a and !b{{/if}}",
-    )
-    .unwrap();
-    println!("{node:#?}");
+    let input = "{{for a in range(5)}}{{for b in range(a)}}{{b}}{{/for}} {{/for}}";
+    let node = Parser::parse_input(input).unwrap();
+
     let mut variables = HashMap::new();
-    let a = Value::String("8.0".into());
-    let b = Value::String("8.0".into());
-    variables.insert("a".to_owned(), &a);
-    variables.insert("b".to_owned(), &b);
+    variables.insert("a".into(), &Value::Number(4.0));
     let mut functions = HashMap::new();
-    let exec = |_| Value::Number(42.0);
-    functions.insert("exec".to_owned(), Box::new(exec));
-    // functions.insert("exec".to_owned(), exec);
-    // println!("{:?}", node.referenced_vars());
-    let references = node.referenced_vars();
-    println!("{references:?}");
+    functions.insert("range".to_owned(), |args: Vec<Value>| {
+        let (lower_bound, upper_bound) = match args.len() {
+            1 => (1, as_usize(&args[0])),
+            2 => (as_usize(&args[0]), as_usize(&args[1])),
+            _ => unimplemented!(),
+        };
+        assert!(lower_bound <= upper_bound);
+        let range = (lower_bound..=upper_bound)
+            .map(|n| Value::Number(n as f64))
+            .collect::<Vec<Value>>();
+        Value::Array(range)
+    });
+    node.referenced_vars();
     println!("{:?}", node.evaluate(&variables, &functions).unwrap());
+}
+
+fn as_usize(value: &Value) -> usize {
+    match value {
+        Value::Number(num) => *num as usize,
+        _ => unimplemented!(),
+    }
 }
