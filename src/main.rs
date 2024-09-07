@@ -12,13 +12,15 @@ use value::Value;
 
 fn main() {
     let node = Parser::parse_input(
-        "{{if a}}{{if b}}a and b{{/if}} or just a{{elif b}}b{{else}}!a and !b{{/if}}",
+        "{{if a == b}}{{if b}}a an{{b}}d b{{/if}} or just a{{elif b}}b{{else}}!a and !b{{/if}}",
     )
     .unwrap();
     println!("{node:#?}");
     let mut variables = HashMap::new();
-    variables.insert("a".to_owned(), &Value::Number(8.0));
-    variables.insert("b".to_owned(), &Value::Number(2.0));
+    let a = Value::String("8.0".into());
+    let b = Value::String("8.0".into());
+    variables.insert("a".to_owned(), &a);
+    variables.insert("b".to_owned(), &b);
     let mut functions = HashMap::new();
     let exec = |_| Value::Number(42.0);
     functions.insert("exec".to_owned(), Box::new(exec));

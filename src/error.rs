@@ -7,7 +7,7 @@ use crate::lexer::Token;
 #[derive(Debug, Error)]
 pub enum LexerError {
     #[error("Unrecognized character: {0:?}")]
-    UnrecognizedCharacter(char),
+    UnexpectedCharacter(char),
 
     #[error("{0}")]
     NumberParseError(ParseFloatError),

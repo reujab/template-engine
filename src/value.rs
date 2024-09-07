@@ -6,6 +6,7 @@ use crate::error::ValueError;
 pub enum Value {
     String(String),
     Number(f64),
+    Boolean(bool),
     Array(Vec<Value>),
 }
 
@@ -14,6 +15,7 @@ impl ToString for Value {
         match self {
             Value::String(string) => string.to_owned(),
             Value::Number(num) => num.to_string(),
+            Value::Boolean(boolean) => boolean.to_string(),
             Value::Array(vec) => vec
                 .iter()
                 .map(|v| v.to_string())
@@ -91,6 +93,7 @@ impl Value {
         match self {
             Value::String(string) => !string.is_empty(),
             Value::Number(number) => *number != 0.0,
+            Value::Boolean(boolean) => *boolean,
             Value::Array(vec) => !vec.is_empty(),
         }
     }

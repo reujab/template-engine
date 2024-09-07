@@ -121,8 +121,61 @@ impl<'a> Parser<'a> {
         Ok(Node::Root(nodes))
     }
 
-    /// This functions handles the lowest-precedence number operations (plus and minus).
     fn parse_expr(&mut self) -> Result<Node, ParseError> {
+        self.parse_or()
+    }
+
+    fn parse_or(&mut self) -> Result<Node, ParseError> {
+        let mut expression = self.parse_and()?;
+        while let Some(token) = self.next_token()? {
+            match token {
+                Token::Operator(Operator::Or) => {
+                    let rhs = self.parse_and()?;
+                    expression = Node::Operation(expression.into(), Operator::Or, rhs.into());
+                    continue;
+                }
+                _ => self.restore(token),
+            }
+            break;
+        }
+        Ok(expression)
+    }
+
+    fn parse_and(&mut self) -> Result<Node, ParseError> {
+        let mut expression = self.parse_comparisons()?;
+        while let Some(token) = self.next_token()? {
+            match token {
+                Token::Operator(Operator::And) => {
+                    let rhs = self.parse_comparisons()?;
+                    expression = Node::Operation(expression.into(), Operator::And, rhs.into());
+                    continue;
+                }
+                _ => self.restore(token),
+            }
+            break;
+        }
+        Ok(expression)
+    }
+
+    fn parse_comparisons(&mut self) -> Result<Node, ParseError> {
+        let mut expression = self.parse_polynomial()?;
+        while let Some(token) = self.next_token()? {
+            match token {
+                Token::Operator(Operator::IsEqualTo) => {
+                    let rhs = self.parse_polynomial()?;
+                    expression =
+                        Node::Operation(expression.into(), Operator::IsEqualTo, rhs.into());
+                    continue;
+                }
+                _ => self.restore(token),
+            }
+            break;
+        }
+        Ok(expression)
+    }
+
+    /// This functions handles the lowest-precedence number operations (plus and minus).
+    fn parse_polynomial(&mut self) -> Result<Node, ParseError> {
         let mut expression = self.parse_term()?;
         while let Some(token) = self.next_token()? {
             match token {

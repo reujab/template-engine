@@ -47,10 +47,13 @@ impl Node {
                 let lhs = lhs.evaluate(variables, functions)?;
                 let rhs = rhs.evaluate(variables, functions)?;
                 match op {
-                    Operator::Add => &lhs + &rhs,
-                    Operator::Subtract => &lhs - &rhs,
                     Operator::Multiply => &lhs * &rhs,
                     Operator::Divide => &lhs / &rhs,
+                    Operator::Add => &lhs + &rhs,
+                    Operator::Subtract => &lhs - &rhs,
+                    Operator::IsEqualTo => Ok(Value::Boolean(lhs == rhs)),
+                    Operator::And => Ok(Value::Boolean(lhs.is_truthy() && rhs.is_truthy())),
+                    Operator::Or => Ok(Value::Boolean(lhs.is_truthy() || rhs.is_truthy())),
                 }
             }
             Node::IfThenElse(condition, then_node, else_node) => {

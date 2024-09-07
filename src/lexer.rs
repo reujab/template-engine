@@ -40,10 +40,13 @@ pub enum Keyword {
 
 #[derive(Debug, PartialEq)]
 pub enum Operator {
-    Add,
-    Subtract,
     Multiply,
     Divide,
+    Add,
+    Subtract,
+    IsEqualTo,
+    And,
+    Or,
 }
 
 impl<'a> Lexer<'a> {
@@ -72,28 +75,37 @@ impl<'a> Lexer<'a> {
                 Token::OpenTemplate
             }
             '}' if self.is_inside_template => {
-                if self.get_if_is('}').is_none() {
-                    // Single closing curly braces are not allowed inside templates.
-                    return Err(LexerError::UnrecognizedCharacter('}'));
-                }
+                self.expect_char('}')?;
                 self.is_inside_template = false;
                 Token::CloseTemplate
             }
             'a'..='z' | 'A'..='Z' | '_' if self.is_inside_template => self.yield_identifier(),
+            '0'..='9' | '.' if self.is_inside_template => self.yield_number()?,
             '"' | '\'' => self.yield_string(next_char)?,
             '(' if self.is_inside_template => Token::OpeningParen,
             ')' if self.is_inside_template => Token::ClosingParen,
-            '+' if self.is_inside_template => Token::Operator(Operator::Add),
-            '-' if self.is_inside_template => Token::Operator(Operator::Subtract),
             '*' if self.is_inside_template => Token::Operator(Operator::Multiply),
             '/' if self.is_inside_template => Token::Operator(Operator::Divide),
-            '0'..='9' | '.' if self.is_inside_template => self.yield_number()?,
+            '+' if self.is_inside_template => Token::Operator(Operator::Add),
+            '-' if self.is_inside_template => Token::Operator(Operator::Subtract),
             ',' if self.is_inside_template => Token::Comma,
+            '=' if self.is_inside_template => {
+                self.expect_char('=')?;
+                Token::Operator(Operator::IsEqualTo)
+            }
+            '&' if self.is_inside_template => {
+                self.expect_char('&')?;
+                Token::Operator(Operator::And)
+            }
+            '|' if self.is_inside_template => {
+                self.expect_char('|')?;
+                Token::Operator(Operator::Or)
+            }
             c if self.is_inside_template && c.is_whitespace() => {
                 self.consume_whitespace();
                 return self.yield_token();
             }
-            c if self.is_inside_template => return Err(LexerError::UnrecognizedCharacter(c)),
+            c if self.is_inside_template => return Err(LexerError::UnexpectedCharacter(c)),
             _ => {
                 // Note: This will cause any single curly brace to start its own text node. This
                 // currently has no side effects.
@@ -117,6 +129,15 @@ impl<'a> Lexer<'a> {
         match self.get_next_char() {
             Some(c) => Ok(c),
             None => Err(LexerError::UnexpectedEOF),
+        }
+    }
+
+    fn expect_char(&mut self, expected_char: char) -> Result<(), LexerError> {
+        let next_char = self.expect_next_char()?;
+        if next_char == expected_char {
+            Ok(())
+        } else {
+            Err(LexerError::UnexpectedCharacter(next_char))
         }
     }
 
