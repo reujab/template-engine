@@ -45,6 +45,7 @@ pub enum Operator {
     Add,
     Subtract,
     IsEqualTo,
+    IsNotEqualTo,
     And,
     Or,
 }
@@ -92,6 +93,10 @@ impl<'a> Lexer<'a> {
             '=' if self.is_inside_template => {
                 self.expect_char('=')?;
                 Token::Operator(Operator::IsEqualTo)
+            }
+            '!' if self.is_inside_template => {
+                self.expect_char('=')?;
+                Token::Operator(Operator::IsNotEqualTo)
             }
             '&' if self.is_inside_template => {
                 self.expect_char('&')?;

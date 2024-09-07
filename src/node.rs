@@ -52,6 +52,7 @@ impl Node {
                     Operator::Add => &lhs + &rhs,
                     Operator::Subtract => &lhs - &rhs,
                     Operator::IsEqualTo => Ok(Value::Boolean(lhs == rhs)),
+                    Operator::IsNotEqualTo => Ok(Value::Boolean(lhs != rhs)),
                     Operator::And => Ok(Value::Boolean(lhs.is_truthy() && rhs.is_truthy())),
                     Operator::Or => Ok(Value::Boolean(lhs.is_truthy() || rhs.is_truthy())),
                 }

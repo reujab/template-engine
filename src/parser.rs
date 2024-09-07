@@ -161,12 +161,14 @@ impl<'a> Parser<'a> {
         let mut expression = self.parse_polynomial()?;
         while let Some(token) = self.next_token()? {
             match token {
-                Token::Operator(Operator::IsEqualTo) => {
-                    let rhs = self.parse_polynomial()?;
-                    expression =
-                        Node::Operation(expression.into(), Operator::IsEqualTo, rhs.into());
-                    continue;
-                }
+                Token::Operator(operator) => match operator {
+                    Operator::IsEqualTo | Operator::IsNotEqualTo => {
+                        let rhs = self.parse_polynomial()?;
+                        expression = Node::Operation(expression.into(), operator, rhs.into());
+                        continue;
+                    }
+                    _ => self.restore(Token::Operator(operator)),
+                },
                 _ => self.restore(token),
             }
             break;
