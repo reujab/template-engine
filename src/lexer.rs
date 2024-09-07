@@ -25,9 +25,17 @@ pub enum Token {
     ClosingParen,
     Comma,
 
+    Keyword(Keyword),
     Identifier(String),
     Literal(Value),
     Operator(Operator),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Keyword {
+    If,
+    Elif,
+    Else,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -92,7 +100,6 @@ impl<'a> Lexer<'a> {
             }
         };
         self.end_token();
-        self.token_start_byte = self.cursor;
         Ok(Some(token))
     }
 
@@ -128,7 +135,13 @@ impl<'a> Lexer<'a> {
 
     fn yield_identifier(&mut self) -> Token {
         self.advance_while(|c| c == '_' || c.is_alphanumeric());
-        Token::Identifier(self.get_slice().to_owned())
+        let identifier = self.get_slice();
+        match identifier {
+            "if" => Token::Keyword(Keyword::If),
+            "elif" => Token::Keyword(Keyword::Elif),
+            "else" => Token::Keyword(Keyword::Else),
+            _ => Token::Identifier(identifier.to_owned()),
+        }
     }
 
     fn yield_number(&mut self) -> Result<Token, LexerError> {
@@ -142,22 +155,27 @@ impl<'a> Lexer<'a> {
     }
 
     fn yield_string(&mut self, quote: char) -> Result<Token, LexerError> {
-        let mut string = String::new();
+        // Don't include quote character in string.
         self.end_token();
+
+        let mut string = String::new();
         loop {
             match self.expect_next_char()? {
                 '\\' => {
                     let next = self.expect_next_char()?;
-                    let c = match next {
+                    let escape = match next {
                         'n' => "\n",
                         '\\' => "\\",
+                        '\n' => "",
                         _ if next == quote => &quote.to_string(),
                         _ => return Err(LexerError::UnrecognizedEscape(next)),
                     };
+
                     self.cursor -= 2;
                     string += self.get_slice();
-                    string += c;
+                    string += escape;
                     self.cursor += 2;
+
                     self.end_token();
                 }
                 c if c == quote => {

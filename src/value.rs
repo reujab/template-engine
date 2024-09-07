@@ -74,3 +74,12 @@ impl Div<&Value> for &Value {
         }
     }
 }
+
+impl Value {
+    pub fn is_truthy(&self) -> bool {
+        match self {
+            Value::String(string) => !string.is_empty(),
+            Value::Number(number) => *number != 0.0,
+        }
+    }
+}

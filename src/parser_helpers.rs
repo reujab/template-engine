@@ -1,7 +1,7 @@
 use crate::{error::ParseError, lexer::Token, parser::Parser};
 
 impl<'a> Parser<'a> {
-    pub(crate) fn next(&mut self) -> Result<Option<Token>, ParseError> {
+    pub(crate) fn next_token(&mut self) -> Result<Option<Token>, ParseError> {
         if self.buffer.is_empty() {
             self.lexer
                 .next_token()
@@ -11,8 +11,8 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub(crate) fn expect_next(&mut self) -> Result<Token, ParseError> {
-        self.next()?.ok_or(ParseError::UnexpectedEOF)
+    pub(crate) fn expect_next_token(&mut self) -> Result<Token, ParseError> {
+        self.next_token()?.ok_or(ParseError::UnexpectedEOF)
     }
 
     pub(crate) fn expect(
@@ -20,7 +20,7 @@ impl<'a> Parser<'a> {
         expected_token: Token,
         parsing: &'static str,
     ) -> Result<(), ParseError> {
-        let next_token = self.expect_next()?;
+        let next_token = self.expect_next_token()?;
         if expected_token == next_token {
             Ok(())
         } else {
