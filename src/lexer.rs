@@ -1,4 +1,4 @@
-use crate::{error::LexerError, value::Value};
+use crate::{error::LexerError, value::OwnedValue};
 
 /// The lexer (a.k.a tokenizer) is responsible for converting the input into a one-dimensional
 /// series of tokens. For example, the input `3 + (4/2)` into the lexer would yield:
@@ -19,21 +19,21 @@ pub struct Lexer<'a> {
 pub enum Token {
     Text(String),
 
-    OpenTemplate,
-    CloseTemplate,
+    TemplateOpen,
+    TemplateClose,
 
     OpeningParen,
     ClosingParen,
 
-    OpeningSquareBracket,
-    ClosingSquareBracket,
+    OpeningSqBracket,
+    ClosingSqBracket,
 
     Comma,
     Exclamation,
 
     Keyword(Keyword),
     Identifier(String),
-    Literal(Value),
+    Literal(OwnedValue),
     Operator(Operator),
 }
 
@@ -82,20 +82,20 @@ impl<'a> Lexer<'a> {
                     return self.yield_token();
                 }
                 self.is_inside_template = true;
-                Token::OpenTemplate
+                Token::TemplateOpen
             }
             '}' if self.is_inside_template => {
                 self.expect_char('}')?;
                 self.is_inside_template = false;
-                Token::CloseTemplate
+                Token::TemplateClose
             }
             'a'..='z' | 'A'..='Z' | '_' if self.is_inside_template => self.yield_identifier(),
             '0'..='9' | '.' if self.is_inside_template => self.yield_number()?,
             '"' | '\'' => self.yield_string(next_char)?,
             '(' if self.is_inside_template => Token::OpeningParen,
             ')' if self.is_inside_template => Token::ClosingParen,
-            '[' if self.is_inside_template => Token::OpeningSquareBracket,
-            ']' if self.is_inside_template => Token::ClosingSquareBracket,
+            '[' if self.is_inside_template => Token::OpeningSqBracket,
+            ']' if self.is_inside_template => Token::ClosingSqBracket,
             '*' if self.is_inside_template => Token::Operator(Operator::Multiply),
             '/' if self.is_inside_template => Token::Operator(Operator::Divide),
             '+' if self.is_inside_template => Token::Operator(Operator::Add),
@@ -195,7 +195,7 @@ impl<'a> Lexer<'a> {
             Err(err) => return Err(LexerError::NumberParseError(err)),
             Ok(number) => number,
         };
-        Ok(Token::Literal(Value::Number(number)))
+        Ok(Token::Literal(OwnedValue::Number(number)))
     }
 
     fn yield_string(&mut self, quote: char) -> Result<Token, LexerError> {
@@ -226,7 +226,7 @@ impl<'a> Lexer<'a> {
                     self.cursor -= 1;
                     string += self.get_slice();
                     self.cursor += 1;
-                    return Ok(Token::Literal(Value::String(string)));
+                    return Ok(Token::Literal(OwnedValue::String(string)));
                 }
                 _ => {}
             }

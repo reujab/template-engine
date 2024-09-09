@@ -2,7 +2,7 @@ use std::num::ParseFloatError;
 
 use thiserror::Error;
 
-use crate::{lexer::Token, value::Value};
+use crate::{lexer::Token, value::OwnedValue};
 
 #[derive(Debug, Error)]
 pub enum LexerError {
@@ -44,5 +44,5 @@ pub enum ValueError {
     UndefinedVariable(String),
 
     #[error("Cannot iterate over {0:?}")]
-    IterateError(Value),
+    IterateError(OwnedValue),
 }

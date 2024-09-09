@@ -101,12 +101,14 @@ impl<'a> Parser<'a> {
         Ok(term)
     }
 
-    /// This function parses parentheses and literals.
+    /// This function parses parentheses, literals, and mono-operations.
     fn parse_factor(&mut self) -> Result<Node, ParseError> {
         let token = self.expect_next_token()?;
         let factor = match token {
             Token::Literal(value) => Node::Value(value),
-            Token::OpeningSquareBracket => self.parse_array()?,
+            Token::OpeningSqBracket => self.parse_array()?,
+            Token::Exclamation => Node::Not(self.parse_factor()?.into()),
+            Token::Operator(Operator::Subtract) => Node::Negate(self.parse_factor()?.into()),
             Token::OpeningParen => {
                 let expr = self.parse_expr()?;
                 self.expect(Token::ClosingParen, "parentheses")?;
@@ -119,7 +121,6 @@ impl<'a> Parser<'a> {
                     Node::Variable(identifier)
                 }
             },
-            Token::Exclamation => Node::Not(self.parse_factor()?.into()),
             token => return Err(ParseError::UnexpectedToken(token, "factor")),
         };
         Ok(factor)
@@ -148,14 +149,14 @@ impl<'a> Parser<'a> {
         let mut array = Vec::new();
         loop {
             match self.expect_next_token()? {
-                Token::ClosingSquareBracket => break,
+                Token::ClosingSqBracket => break,
                 token => {
                     self.restore(token);
                     array.push(self.parse_expr()?);
                 }
             }
             match self.expect_next_token()? {
-                Token::ClosingSquareBracket => break,
+                Token::ClosingSqBracket => break,
                 Token::Comma => continue,
                 token => return Err(ParseError::UnexpectedToken(token, "array")),
             }

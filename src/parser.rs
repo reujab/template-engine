@@ -2,7 +2,7 @@ use crate::{
     error::ParseError,
     lexer::{Keyword, Lexer, Operator, Token},
     node::Node,
-    value::Value,
+    value::OwnedValue,
 };
 
 /// The parser converts the tokens produced by the lexer into an abstract syntax tree.
@@ -39,8 +39,8 @@ impl<'a> Parser<'a> {
             Some(token) => token,
         };
         let node = match token {
-            Token::Text(string) => Node::Value(Value::String(string)),
-            Token::OpenTemplate => self.parse_template()?,
+            Token::Text(string) => Node::Value(OwnedValue::String(string)),
+            Token::TemplateOpen => self.parse_template()?,
             token => panic!("Something went horribly wrong: {token:?}"),
         };
         Ok(Some(node))
@@ -62,22 +62,21 @@ impl<'a> Parser<'a> {
                 self.parse_expr()?
             }
         };
-        self.expect(Token::CloseTemplate, "template")?;
+        self.expect(Token::TemplateClose, "template")?;
         Ok(node)
     }
 
     fn parse_if(&mut self) -> Result<Node, ParseError> {
         let condition = self.parse_expr()?;
-        self.expect(Token::CloseTemplate, "template if")?;
+        self.expect(Token::TemplateClose, "template if")?;
         let mut then_nodes = Vec::new();
         let else_node = loop {
             match self.next_node() {
                 Ok(node) => then_nodes.push(node.ok_or(ParseError::UnexpectedEOF)?),
                 Err(ParseError::ExpectedToken(Token::Keyword(Keyword::Elif))) => {
                     // This is so beautiful. We just consumed the elif keyword, so this single call
-                    // will parse the rest of this "if" tree up to the {{/if tokens, leaving the
-                    // closing template token to be consumed by `parse_template`. Beautiful
-                    // recursion.
+                    // will parse the rest of this "if" tree up to the {{/if tokens, leaving the }}
+                    // token to be consumed by `parse_template`. Beautiful recursion.
                     break Some(self.parse_if()?);
                 }
                 Err(ParseError::ExpectedToken(Token::Keyword(Keyword::Else))) => {
@@ -99,13 +98,13 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_else(&mut self) -> Result<Node, ParseError> {
-        self.expect(Token::CloseTemplate, "template else")?;
-        let mut nodes = Vec::new();
+        self.expect(Token::TemplateClose, "template else")?;
+        let mut body = Vec::new();
         loop {
             match self.next_node() {
-                Ok(node) => nodes.push(node.ok_or(ParseError::UnexpectedEOF)?),
+                Ok(node) => body.push(node.ok_or(ParseError::UnexpectedEOF)?),
                 // {{ /if }}
-                Err(ParseError::UnexpectedToken(Token::Operator(Operator::Divide), _)) => {
+                Err(ParseError::ExpectedToken(Token::Operator(Operator::Divide))) => {
                     self.expect(Token::Keyword(Keyword::If), "else end if")?;
                     // We leave the CloseTemplate token for `parse_template` to consume.
                     break;
@@ -113,7 +112,7 @@ impl<'a> Parser<'a> {
                 Err(err) => return Err(err),
             }
         }
-        Ok(Node::Body(nodes))
+        Ok(Node::Body(body))
     }
 
     fn parse_for(&mut self) -> Result<Node, ParseError> {
@@ -123,7 +122,15 @@ impl<'a> Parser<'a> {
         };
         self.expect(Token::Keyword(Keyword::In), "for in")?;
         let array = self.parse_expr()?;
-        self.expect(Token::CloseTemplate, "for array")?;
+        let separator = match self.expect_next_token()? {
+            Token::TemplateClose => None,
+            token => {
+                self.restore(token);
+                let separator = self.parse_expr()?;
+                self.expect(Token::TemplateClose, "for array")?;
+                Some(separator.into())
+            }
+        };
 
         let mut body = Vec::new();
         loop {
@@ -137,6 +144,11 @@ impl<'a> Parser<'a> {
             }
         }
         let body_node = Node::Body(body);
-        Ok(Node::ForIn(identifier, array.into(), body_node.into()))
+        Ok(Node::ForIn(
+            identifier,
+            array.into(),
+            body_node.into(),
+            separator,
+        ))
     }
 }
