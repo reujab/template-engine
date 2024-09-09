@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use lite_templates::{OwnedValue, Parser, Value};
+use ramon_templates::{OwnedValue, Parser, Value};
 
 const _A: f64 = 4.0;
 const A: f64 = 8.2;
